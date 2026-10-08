@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  CLIENT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum CoachType {
+  GENERAL
+  SLEEPER
+  AC
+  CHAIR_CAR
+}
+
+enum PassengerGender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  name      String
+  email     String     @unique
+  phone     String     @unique
+  password  String
+  role      UserRole   @default(CLIENT)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  bookings  Booking[]
+}
+
+model Station {
+  id                 Int     @id @default(autoincrement())
+  name               String
+  code               String  @unique
+  city               String
+  state              String
+  createdAt          DateTime @default(now())
+  sourceRoutes       Route[] @relation("RouteSourceStation")
+  destinationRoutes  Route[] @relation("RouteDestinationStation")
+
+  @@index([city, state])
+}
+
+model Train {
+  id          Int       @id @default(autoincrement())
+  trainNumber String    @unique
+  name        String
+  createdAt   DateTime  @default(now())
+  routes      Route[]
+  coaches     Coach[]
+  bookings    Booking[]
+}
+
+model Route {
+  id                  Int      @id @default(autoincrement())
+  trainId             Int
+  sourceStationId     Int
+  destinationStationId Int
+  departureTime       DateTime @db.Time(0)
+  arrivalTime         DateTime @db.Time(0)
+  train               Train    @relation(fields: [trainId], references: [id])
+  sourceStation       Station  @relation("RouteSourceStation", fields: [sourceStationId], references: [id])
+  destinationStation  Station  @relation("RouteDestinationStation", fields: [destinationStationId], references: [id])
+
+  @@index([trainId])
+  @@index([sourceStationId])
+  @@index([destinationStationId])
+}
+
+model Coach {
+  id             Int               @id @default(autoincrement())
+  trainId        Int
+  coachNumber    String
+  coachType      CoachType
+  totalSeats     Int
+  fare           Decimal?          @db.Decimal(10, 2)
+  train          Train             @relation(fields: [trainId], references: [id])
+  seatAvailabilities SeatAvailability[]
+  bookings       Booking[]
+
+  @@unique([trainId, coachNumber])
+}
+
+model SeatAvailability {
+  id             Int      @id @default(autoincrement())
+  coachId        Int
+  travelDate     DateTime @db.Date
+  availableSeats Int
+  coach          Coach    @relation(fields: [coachId], references: [id])
+
+  @@unique([coachId, travelDate])
+  @@index([travelDate])
+}
+
+model Booking {
+  id          Int           @id @default(autoincrement())
+  userId      Int
+  trainId     Int
+  coachId     Int
+  pnr         String        @unique
+  bookingDate DateTime      @default(now())
+  journeyDate DateTime      @db.Date
+  status      BookingStatus @default(PENDING)
+  totalAmount Decimal       @db.Decimal(10, 2)
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id])
+  train       Train         @relation(fields: [trainId], references: [id])
+  coach       Coach         @relation(fields: [coachId], references: [id])
+  passengers  Passenger[]
+
+  @@index([userId, bookingDate])
+  @@index([trainId, journeyDate])
+}
+
+model Passenger {
+  id         Int             @id @default(autoincrement())
+  bookingId  Int
+  name       String
+  age        Int
+  gender     PassengerGender
+  seatNumber String
+  booking    Booking         @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+}
