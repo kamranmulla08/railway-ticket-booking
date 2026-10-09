@@ -4,7 +4,12 @@ import {
   DuplicateEmailError,
   DuplicatePhoneError,
   InvalidCredentialsError,
+  UserBlockedError,
+  AdminUserNotFoundError,
+  CannotBlockAdminError,
   getUserProfile,
+  getAllUsersForAdmin,
+  changeUserBlockedStatus,
   loginUser,
   registerUser,
 } from "../services/userService.js";
@@ -26,6 +31,12 @@ const loginSchema = z
   })
   .strict();
 
+const blockUserSchema = z
+  .object({
+    isBlocked: z.boolean(),
+  })
+  .strict();
+
 export async function registerUserController(
   request: Request,
   response: Response,
@@ -43,7 +54,8 @@ export async function registerUserController(
 
   if (validation.data.role === "ADMIN") {
     response.status(400).json({
-      message: "Only CLIENT registrations are allowed. The role is assigned by the system.",
+      message:
+        "Only CLIENT registrations are allowed. The role is assigned by the system.",
     });
     return;
   }
@@ -57,7 +69,10 @@ export async function registerUserController(
       user,
     });
   } catch (error) {
-    if (error instanceof DuplicateEmailError || error instanceof DuplicatePhoneError) {
+    if (
+      error instanceof DuplicateEmailError ||
+      error instanceof DuplicatePhoneError
+    ) {
       response.status(409).json({ message: error.message });
       return;
     }
@@ -94,6 +109,11 @@ export async function loginUserController(
       return;
     }
 
+    if (error instanceof UserBlockedError) {
+      response.status(403).json({ message: error.message });
+      return;
+    }
+
     next(error);
   }
 }
@@ -104,7 +124,9 @@ export async function getMeController(
   next: NextFunction,
 ): Promise<void> {
   if (!request.user) {
-    response.status(401).json({ message: "Authentication required" });
+    response.status(401).json({
+      message: "Authentication required",
+    });
     return;
   }
 
@@ -112,12 +134,80 @@ export async function getMeController(
     const user = await getUserProfile(request.user.userId);
 
     if (!user) {
-      response.status(404).json({ message: "User not found" });
+      response.status(404).json({
+        message: "User not found",
+      });
       return;
     }
 
     response.status(200).json(user);
   } catch (error) {
+    next(error);
+  }
+}
+
+// Admin: get all registered users.
+export async function getUsersController(
+  _request: Request,
+  response: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const users = await getAllUsersForAdmin();
+
+    response.status(200).json({ users });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Admin: block or unblock a client account.
+export async function updateUserBlockStatusController(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): Promise<void> {
+  const id = Number(request.params.id);
+
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    response.status(400).json({
+      message: "Invalid user ID",
+    });
+    return;
+  }
+
+  const validation = blockUserSchema.safeParse(request.body);
+
+  if (!validation.success) {
+    response.status(400).json({
+      message: "isBlocked must be true or false",
+    });
+    return;
+  }
+
+  try {
+    const user = await changeUserBlockedStatus(
+      id,
+      validation.data.isBlocked,
+    );
+
+    response.status(200).json({
+      message: validation.data.isBlocked
+        ? "User blocked successfully"
+        : "User unblocked successfully",
+      user,
+    });
+  } catch (error) {
+    if (error instanceof AdminUserNotFoundError) {
+      response.status(404).json({ message: error.message });
+      return;
+    }
+
+    if (error instanceof CannotBlockAdminError) {
+      response.status(403).json({ message: error.message });
+      return;
+    }
+
     next(error);
   }
 }
