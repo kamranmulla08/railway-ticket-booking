@@ -58,7 +58,7 @@ function formatTime(value: string) {
   });
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string) {
   if (!value) {
     return "Not selected";
   }
@@ -77,24 +77,8 @@ function formatDate(value: string | null) {
 }
 
 function TrainSearchResults() {
-  const query = new URLSearchParams(
-    window.location.search,
-  );
-
-  const sourceStationId = query.get(
-    "sourceStationId",
-  );
-
-  const destinationStationId = query.get(
-    "destinationStationId",
-  );
-
-  const journeyDate = query.get("journeyDate");
-
   const [routes, setRoutes] = useState<RouteResult[]>([]);
-  const [message, setMessage] = useState(
-    "Loading trains...",
-  );
+  const [message, setMessage] = useState("Loading trains...");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -110,10 +94,26 @@ function TrainSearchResults() {
       };
     }
 
+    const query = new URLSearchParams(window.location.search);
+
+    const sourceStationIdValue =
+      query.get("sourceStationId");
+
+    const destinationStationIdValue =
+      query.get("destinationStationId");
+
+    const journeyDateValue =
+      query.get("journeyDate");
+
+    /*
+     * Check that all required search values exist.
+     * After this check, we copy them into normal string
+     * variables so TypeScript knows they are not null.
+     */
     if (
-      !sourceStationId ||
-      !destinationStationId ||
-      !journeyDate
+      !sourceStationIdValue ||
+      !destinationStationIdValue ||
+      !journeyDateValue
     ) {
       setMessage(
         "Source, destination, or journey date is missing.",
@@ -125,12 +125,27 @@ function TrainSearchResults() {
       };
     }
 
+    const sourceStationId = sourceStationIdValue;
+    const destinationStationId =
+      destinationStationIdValue;
+    const journeyDate = journeyDateValue;
+
     async function searchTrains() {
       try {
-        const routeParams = new URLSearchParams({
+        /*
+         * Search routes between the selected stations.
+         */
+        const routeParams = new URLSearchParams();
+
+        routeParams.set(
+          "sourceStationId",
           sourceStationId,
+        );
+
+        routeParams.set(
+          "destinationStationId",
           destinationStationId,
-        });
+        );
 
         const response = await authenticatedFetch(
           `/routes/search?${routeParams.toString()}`,
@@ -155,6 +170,9 @@ function TrainSearchResults() {
           >[];
         };
 
+        /*
+         * Get unique train IDs.
+         */
         const trainIds = [
           ...new Set(
             result.routes.map(
@@ -163,6 +181,9 @@ function TrainSearchResults() {
           ),
         ];
 
+        /*
+         * Store availability for each train.
+         */
         const availabilityByTrain = new Map<
           number,
           CoachAvailability[]
@@ -173,14 +194,14 @@ function TrainSearchResults() {
             const availabilityParams =
               new URLSearchParams();
 
-            availabilityParams.append(
+            availabilityParams.set(
               "trainId",
               String(trainId),
             );
 
-            availabilityParams.append(
+            availabilityParams.set(
               "travelDate",
-              journeyDate || "",
+              journeyDate,
             );
 
             const availabilityResponse =
@@ -216,6 +237,9 @@ function TrainSearchResults() {
           return;
         }
 
+        /*
+         * Combine route information with seat availability.
+         */
         const searchResults: RouteResult[] =
           result.routes.map((route) => ({
             ...route,
@@ -253,11 +277,23 @@ function TrainSearchResults() {
     return () => {
       isMounted = false;
     };
-  }, [
-    sourceStationId,
-    destinationStationId,
-    journeyDate,
-  ]);
+  }, []);
+
+  /*
+   * Read the journey date again for displaying it.
+   */
+  const displayQuery = new URLSearchParams(
+    window.location.search,
+  );
+
+  const displayJourneyDate =
+    displayQuery.get("journeyDate") ?? "";
+
+  const displaySourceStationId =
+    displayQuery.get("sourceStationId") ?? "";
+
+  const displayDestinationStationId =
+    displayQuery.get("destinationStationId") ?? "";
 
   return (
     <div className="site-shell">
@@ -274,7 +310,7 @@ function TrainSearchResults() {
 
             <p className="admin-welcome">
               Journey date:{" "}
-              {formatDate(journeyDate)}
+              {formatDate(displayJourneyDate)}
             </p>
           </div>
 
@@ -319,7 +355,11 @@ function TrainSearchResults() {
 
                 <a
                   className="secondary-link"
-                  href={`/trains/${route.train.id}?journeyDate=${journeyDate}&sourceStationId=${sourceStationId}&destinationStationId=${destinationStationId}`}
+                  href={`/trains/${route.train.id}?${new URLSearchParams({
+                    journeyDate: displayJourneyDate,
+                    sourceStationId: displaySourceStationId,
+                    destinationStationId: displayDestinationStationId,
+                  }).toString()}`}
                 >
                   Train details
                 </a>
@@ -383,7 +423,10 @@ function TrainSearchResults() {
 
                       <a
                         className="secondary-link"
-                        href={`/trains/${route.train.id}/seats?journeyDate=${journeyDate}&coachId=${item.coach.id}`}
+                        href={`/trains/${route.train.id}/seats?${new URLSearchParams({
+                          journeyDate: displayJourneyDate,
+                          coachId: String(item.coach.id),
+                        }).toString()}`}
                       >
                         View seats
                       </a>
