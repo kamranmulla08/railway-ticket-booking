@@ -38,6 +38,7 @@ model User {
   phone     String     @unique
   password  String
   role      UserRole   @default(CLIENT)
+  isBlocked Boolean @default(false)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   bookings  Booking[]

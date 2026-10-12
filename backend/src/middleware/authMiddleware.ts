@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
+import prisma from "../utils/prisma.js";
 
 type AuthenticatedRole = "ADMIN" | "CLIENT";
 
@@ -14,7 +15,7 @@ declare global {
   }
 }
 
-const authMiddleware: RequestHandler = (request, response, next) => {
+const authMiddleware: RequestHandler = async (request, response, next) => {
   const authorizationHeader = request.header("Authorization");
   const bearerToken = authorizationHeader?.match(/^Bearer\s+(\S+)$/i)?.[1];
 
@@ -30,6 +31,9 @@ const authMiddleware: RequestHandler = (request, response, next) => {
     return;
   }
 
+  let userId: number;
+  let tokenRole: unknown;
+
   try {
     const payload = jwt.verify(bearerToken, jwtSecret);
 
@@ -38,22 +42,60 @@ const authMiddleware: RequestHandler = (request, response, next) => {
       return;
     }
 
-    const userId = Number(payload.userId ?? payload.sub);
-    const role = payload.role;
+    userId = Number(payload.userId ?? payload.sub);
+    tokenRole = payload.role;
 
     if (
       !Number.isSafeInteger(userId) ||
       userId <= 0 ||
-      (role !== "ADMIN" && role !== "CLIENT")
+      (tokenRole !== "ADMIN" && tokenRole !== "CLIENT")
     ) {
       response.status(401).json({ message: "Authentication required" });
       return;
     }
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      response.status(401).json({ message: "Token has expired" });
+      return;
+    }
 
-    request.user = { userId, role };
+    if (error instanceof jwt.JsonWebTokenError) {
+      response.status(401).json({ message: "Invalid or expired token" });
+      return;
+    }
+
+    next(error);
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        isBlocked: true,
+      },
+    });
+
+    if (!user) {
+      response.status(401).json({ message: "User account not found" });
+      return;
+    }
+
+    if (user.isBlocked) {
+      response.status(403).json({ message: "Your account has been blocked" });
+      return;
+    }
+
+    request.user = {
+      userId: user.id,
+      role: user.role,
+    };
+
     next();
-  } catch {
-    response.status(401).json({ message: "Authentication required" });
+  } catch (error) {
+    next(error);
   }
 };
 

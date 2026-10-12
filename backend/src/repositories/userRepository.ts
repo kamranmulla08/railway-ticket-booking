@@ -7,12 +7,18 @@ export type NewUserData = {
   password: string;
 };
 
-export async function findUserByEmailOrPhone(email: string, phone: string) {
+export async function findUserByEmailOrPhone(
+  email: string,
+  phone: string,
+) {
   return prisma.user.findMany({
     where: {
       OR: [{ email }, { phone }],
     },
-    select: { email: true, phone: true },
+    select: {
+      email: true,
+      phone: true,
+    },
   });
 }
 
@@ -26,6 +32,7 @@ export async function findUserByEmail(email: string) {
       phone: true,
       password: true,
       role: true,
+      isBlocked: true,
     },
   });
 }
@@ -54,6 +61,42 @@ export async function createUser(userData: NewUserData) {
       role: true,
       createdAt: true,
       updatedAt: true,
+    },
+  });
+}
+
+// Admin: get all users without exposing passwords.
+export async function findAllUsersForAdmin() {
+  return prisma.user.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      isBlocked: true,
+      createdAt: true,
+    },
+  });
+}
+
+// Admin: block or unblock a client account.
+export async function setUserBlockedStatus(
+  id: number,
+  isBlocked: boolean,
+) {
+  return prisma.user.update({
+    where: { id },
+    data: { isBlocked },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      isBlocked: true,
+      createdAt: true,
     },
   });
 }
